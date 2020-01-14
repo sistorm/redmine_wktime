@@ -43,7 +43,6 @@ class WkpayrollController < WkbaseController
 				@payrollEntries[entry.first] = entry.last
 			end
 		end
-
 		@total_gross = @payrollEntries.sum { |k, p| p[:BT] + p[:AT] }
 		@total_net = @payrollEntries.sum { |k, p| p[:BT] + p[:AT] - p[:DT] }
 
@@ -51,7 +50,6 @@ class WkpayrollController < WkbaseController
 
 	def payrollEntries
 		sort_init 'id', 'asc'
-		
 		sort_update 'user' => "CONCAT(U.firstname, U.lastname)",
 					'salary_date' => "S.salary_date",
 					'basic_pay' => "basic_pay",
@@ -64,16 +62,9 @@ class WkpayrollController < WkbaseController
 		@isPreview = params[:generate].blank? ? false : !to_boolean(params[:generate])
 		@total_gross = 0
 		@total_net = 0
-	  	@groups = Group.sorted.all
     	set_filter_session
     	retrieve_date_range
-		@members = Array.new
-		userIds = Array.new
-		userList = getGroupMembers
-		userList.each do |users|
-			@members << [users.name,users.id.to_s()]
-			userIds << users.id
-		end
+		userIds = getUsersAndGroups
 		ids = nil
 		user_id = session[controller_name].try(:[], :user_id)
 		group_id = session[controller_name].try(:[], :group_id)
@@ -190,30 +181,35 @@ class WkpayrollController < WkbaseController
 
 	def updateUserSalary
 		userId = params[:user_id]
-		salary_cmpts = get_salary_components
-		u_salary_cmpts = Array.new
-		salary_cmpts.each do |component|
+		salary_comps = get_salary_components
+		u_salary_comps = Array.new
+		salary_comps.each do |component|
 				componentId = component.id
 				is_override = params['is_override' + componentId.to_s()]
 				dependent_id = params['dependent_id' + componentId.to_s()].to_i
 				factor = params['factor' + componentId.to_s()]
-				u_salary_cmpts << {:user_id => userId, :component_id => componentId, :dependent_id => dependent_id, :factor => factor, :is_override => is_override}
+				u_salary_comps << {:user_id => userId, :component_id => componentId, :dependent_id => dependent_id, :factor => factor, :is_override => is_override}
 			end
-			errorMsg = saveUserSalary(u_salary_cmpts, false)
-		if errorMsg.nil?
-			redirect_to :action => 'usrsettingsindex'
-			flash[:notice] = l(:notice_successful_update)
-		else
-			flash[:error] = errorMsg
-			redirect_to :action => 'user_salary_settings'
-		end	
+			errorMsg = saveUserSalary(u_salary_comps, false)	
+			if errorMsg.nil?
+				if params[:taxsettings].present?
+						redirect_to :action => 'income_tax', action_type: 'userSettings', user_id: userId, method: 'saveTaxVal',
+												 taxsettings: params[:taxsettings].permit!.to_h
+				else
+					redirect_to :action => 'usrsettingsindex'
+					flash[:notice] = l(:notice_successful_update)
+				end
+			else
+				flash[:error] = errorMsg
+				redirect_to :action => 'user_salary_settings'
+			end
 	end
 	
 	def generatePayroll(userIds, salaryDate, isGeneratePayroll)
 		errorMsg = generateSalaries(userIds,salaryDate, isGeneratePayroll)
 		if to_boolean(isGeneratePayroll)
 			if errorMsg.nil?
-				redirect_to :action => 'index' , :tab => 'wkpayroll'
+				redirect_to action: 'index' , tab: 'payroll'
 				flash[:notice] = l(:notice_successful_update)		
 			elsif !errorMsg.blank? &&  errorMsg == 1			
 				flash[:notice] =  l(:label_salary) + " " +  l(:notice_successful_update) 
@@ -233,6 +229,7 @@ class WkpayrollController < WkbaseController
 		"order by u.id, sc.component_type"
 		@userSalHash = getUserSalaryHash(userId, Date.today.at_end_of_month + 1)
 		@userSalaryEntries = WkUserSalaryComponents.find_by_sql(sqlStr)
+		getTaxSettingVal
 	end
 
 	def saveUsrSalCompHistory(userSalCompHash)
@@ -301,9 +298,9 @@ class WkpayrollController < WkbaseController
 				end
 			end
 		end
-   end
+   	end
    
-   def getMembersbyGroup
+   	def getMembersbyGroup
 		group_by_users=""
 		userList=[]
 		userList = getGroupMembers
@@ -314,23 +311,6 @@ class WkpayrollController < WkbaseController
 			format.text  { render :plain => group_by_users }
 		end
 	end	
-	
-	def getGroupMembers
-		userList = nil
-		group_id = nil
-		if (!params[:group_id].blank?)
-			group_id = params[:group_id]
-		else
-			group_id = session[controller_name].try(:[], :group_id)
-		end
-		
-		if !group_id.blank? && group_id.to_i > 0
-			userList = User.in_group(group_id) 
-		else
-			userList = User.order("#{User.table_name}.firstname ASC,#{User.table_name}.lastname ASC")
-		end
-		userList
-	end
 	
    # Retrieves the date range based on predefined ranges or specific from/to param dates
 	def retrieve_date_range
@@ -384,7 +364,7 @@ class WkpayrollController < WkbaseController
 
 	end
 	
-  def check_perm_and_redirect
+  	def check_perm_and_redirect
 	  unless check_permission
 	    render_403
 	    return false
@@ -435,6 +415,15 @@ class WkpayrollController < WkbaseController
 		sqlStr = selectStr + sqlStr
 		findBySql(sqlStr)
 		@salary_components = get_salary_components
+
+		userIds = nil
+		if !validateERPPermission('A_TE_PRVLG')
+			userIds = User.current.id
+		else
+			alluserIds = getUsersAndGroups
+			userIds = alluserIds.join(',')
+		end
+		getUserSalaryHash(userIds, Date.today.at_end_of_month + 1)
 		@user_salary_components = WkUserSalaryComponents.all
 	end
 	
@@ -442,8 +431,15 @@ class WkpayrollController < WkbaseController
 		if request.post?
 			payrollValues = salaryComponentsHashVal(params[:settings])
 			savePayrollSettings(payrollValues)
+			params[:taxsettings].each do |key, value|
+				taxSettings = WkSetting.where("name = ?", key ).first
+				taxSettings = WkSetting.new if taxSettings.blank?
+				taxSettings.name = key
+				taxSettings.value = value
+				taxSettings.save()
+			end
 			flash[:notice] = l(:notice_successful_update)
-			redirect_to controller: controller_name, action: 'index', tab: controller_name
+			redirect_to action: 'payrollsettings', tab: "payroll"
 		else
 			retrieveSalarayComponents()
 		end
@@ -452,47 +448,93 @@ class WkpayrollController < WkbaseController
 	def salaryComponentsHashVal settinghash
 		payrollValues = Hash.new()
 		if !settinghash.blank? 
-			payrollValues[:basic] = settinghash["wktime_payroll_basic"]
-			payrollValues[:allowances] = settinghash["wktime_payroll_allowances"]
-			payrollValues[:deduction] = settinghash["wktime_payroll_deduction"]
-			payrollValues[:Calculated_Fields] = settinghash["wktime_payroll_calculated_fields"]
-			payrollValues[:payroll_deleted_ids] = settinghash["payroll_deleted_ids"]
+			payrollValues[:basic] = settinghash["basic"]
+			payrollValues[:allowances] = settinghash["allowances"]
+			payrollValues[:deduction] = settinghash["deduction"]
+			payrollValues[:Calculated_Fields] = settinghash["calculated_fields"]
+			payrollValues[:comp_del_ids] = settinghash["comp_del_ids"]
+			payrollValues[:dep_del_ids] = settinghash["dep_del_ids"]
+			payrollValues[:cond_del_ids] = settinghash["cond_del_ids"]
 		end
 		payrollValues
 	end
 
 	def retrieveSalarayComponents
-		dep_list = WkSalaryComponents.order('name')
-		basic = Array.new
-		allowance = Array.new
-		deduction = Array.new
-		calculated_fields = Array.new
+		salary_comps = WkSalaryComponents.all.order('name')
+		salaryCompNames = getSalaryCompNames
+		condOperators = getLogicalCond.invert
+		factorOps = getFactorOperators.invert
+		salaryFrequecy = getSalaryFrequency
+		salaryTypes = getSalaryType
+		ledgers = getLedgerNames
+		calculatedFieldTypes = get_calculated_field_types.invert
 		hashval = Hash.new()
-		unless dep_list.blank?
-			dep_list.each do |list| 
-			basic = [list.id.to_s + '|' + list.name + '|' + list.salary_type + '|' + list.factor.to_s + '|' + list.ledger_id.to_s ]  if list.component_type == 'b'	
-			allowance << list.id.to_s + '|' + list.name+'|'+list.frequency.to_s+'|'+ (list.start_date).to_s+'|'+(list.dependent_id).to_s+'|'+list.factor.to_s + '|' + list.ledger_id.to_s	if list.component_type == 'a'
-			deduction << list.id.to_s + '|' + list.name + '|' + list.frequency.to_s + '|' + (list.start_date).to_s + '|' + (list.dependent_id).to_s + '|' + (list.factor).to_s + '|' + list.ledger_id.to_s if list.component_type == 'd'
-			calculated_fields << list.id.to_s + '|' + list.name + '|' + list.salary_type if list.component_type == 'c'
+		hashval["basic"] = []
+		hashval["allowances"] = []
+		hashval["deduction"] = []
+		hashval["calculated_fields"] = []
+
+		salary_comps.each do |list|
+			allowCompDeps = []
+			allowCompDepsText = []
+			deductCompDeps = []
+			deductCompDepsText = []
+			basicCompDep = ""
+			basicCompDepText = ""
+
+			list.salary_comp_deps.each do |dependent|
+				comp_cond = dependent.salary_comp_cond
+				salaryCompDeps = dependent.id.to_s + '_' + dependent.dependent_id.to_s + '_' + dependent.factor_op.to_s + '_' +
+					dependent.factor.to_s + '_' + comp_cond.try(:id).to_s + ':' + comp_cond.try(:lhs).to_s + ':' + 
+					comp_cond.try(:operators).to_s + ':' + comp_cond.try(:rhs).to_s + ':' + comp_cond.try(:rhs2).to_s
+				salaryCompDepText = salaryCompNames[dependent.dependent_id.to_s].to_s + ':' + factorOps[dependent.factor_op.to_s].to_s + ':' +
+					dependent.factor.to_s + ':' + salaryCompNames[comp_cond.try(:lhs).to_s].to_s + ':' +
+					condOperators[comp_cond.try(:operators).to_s].to_s + ':' + comp_cond.try(:rhs).to_s + ':' + comp_cond.try(:rhs2).to_s
+				case list.component_type
+				when 'a'
+					allowCompDeps << salaryCompDeps
+					allowCompDepsText << salaryCompDepText
+				when 'd'
+					deductCompDeps << salaryCompDeps
+					deductCompDepsText << salaryCompDepText
+				end
 			end
+			if list.component_type == 'b'
+				basicCompDep = list.salary_comp_deps.first.try(:id).to_s + '|' + list.salary_comp_deps.first.try(:factor).to_s
+				basicCompDepText = list.salary_comp_deps.first.try(:factor)
+				hashval["basic"] << [list.name + '|' + salaryTypes[list.salary_type.to_s].to_s + '|' + basicCompDepText.to_s + '|' +
+					ledgers[list.ledger_id.to_s].to_s , list.id.to_s + '|' + list.name + '|' + list.salary_type + '|' + basicCompDep + '|' + 
+					list.ledger_id.to_s]
+			end
+
+
+			hashval["allowances"] << [list.name + ':' + salaryFrequecy[list.frequency.to_s].to_s + ':' +
+				(list.start_date).to_s + ':' + ledgers[list.ledger_id.to_s].to_s + ':' + allowCompDepsText.join(":"),
+				list.id.to_s + '|' + list.name + '|' + list.frequency.to_s + '|' + (list.start_date).to_s +
+				'|' + list.ledger_id.to_s + '|' + allowCompDeps.join("-")] if list.component_type == 'a'
+
+			hashval["deduction"] << [list.name + ':' + salaryFrequecy[list.frequency.to_s].to_s + ':' +
+				(list.start_date).to_s + ':' + ledgers[list.ledger_id.to_s].to_s + ':' +
+				deductCompDepsText.join(":"), 
+				list.id.to_s + '|' + list.name + '|' + list.frequency.to_s + '|' +
+				(list.start_date).to_s + '|' + list.ledger_id.to_s + '|' + deductCompDeps.join("-")] if list.component_type == 'd'
+
+			hashval["calculated_fields"] << [list.name + '|' + calculatedFieldTypes[list.salary_type.to_s].to_s,
+				list.id.to_s + '|' + list.name + '|' + list.salary_type] if list.component_type == 'c'
 		end
-		hashval["wktime_payroll_basic"] = basic
-		hashval["wktime_payroll_allowances"] = allowance
-		hashval["wktime_payroll_deduction"] = deduction
-		hashval["wktime_payroll_calculated_fields"] = calculated_fields
 		@payrollsettings = hashval
 	end
 	    
 	def save_bulk_edit
-    
 		salary_cmpts = get_salary_components
 		u_salary_cmpts = Array.new
-		params.each do |param|
+		params.each do |key, valueSet|
 				salary_cmpts.each do |component|
-					param_elmts = (param.first).split('_')
-						if param_elmts.first.to_i == component.id && (!(param.last).blank?)
-								user_id = param_elmts.last.blank? ? nil : param_elmts.last
-								u_salary_cmpts << {:user_id => user_id, :component_id => param_elmts.first, :dependent_id => component.dependent_id, :factor => param.last, :is_override => 1 }
+					keys = key.split('_')
+						if keys.first.to_i == component.id && (!(valueSet.first).blank?)
+								user_id = keys.last.blank? ? nil : keys.last
+								u_salary_cmpts << {:user_id => user_id, :component_id => keys.first,
+									:dependent_id => valueSet.last, :factor => valueSet.first, :is_override => 1 }
 						end
 				end
 		end
@@ -552,6 +594,17 @@ class WkpayrollController < WkbaseController
 				send_data(payroll_to_csv(@payrollEntries), :type => 'text/csv; header=present', :filename => 'payroll.csv')
 			}
 		end
+	end
+
+	def income_tax
+		if params[:action_type] == "calculatetax"
+			render json: params[:data]
+		end
+		getTaxSettingVal
+	end
+
+	def getRecursiveComp
+		render(plain: getSalCompsByCompType(params[:component_type]))
 	end
 
 end

@@ -78,8 +78,7 @@ module WksurveyHelper
                 LEFT JOIN groups_users ON groups_users.group_id = wk_surveys.group_id
                 LEFT JOIN users ON users.id = groups_users.user_id 
                 WHERE wk_surveys.status IN ('O', 'C') AND (groups_users.user_id = #{(User.current.id).to_s}
-                    OR wk_surveys.group_id IS NULL OR (users.parent_id = #{(User.current.id).to_s}
-                    AND wk_surveys.is_review IS TRUE) OR true = #{validateERPPermission("E_SUR")})
+                    OR wk_surveys.group_id IS NULL )
                 GROUP BY wk_surveys.id
                 ) AS S ON S.id = wk_surveys.id")
         end
@@ -170,7 +169,7 @@ module WksurveyHelper
         elsif !params[:account_id].blank? || params[:surveyForType] == "WkAccount"
             @surveyForType = "WkAccount"
             @surveyForID = params[:account_id].blank? ? params[:surveyForID] : params[:account_id]
-        elsif params[:surveyForType] == 'User' || params[:surveyForType] == "User"
+        elsif params[:surveyForType] == "User"
             @surveyForType = "User"
             @surveyForID = User.current.id
         else
@@ -192,4 +191,19 @@ module WksurveyHelper
             l(:label_reviewed) => 'R'
         }
     end
+    
+    def sent_emails(subject, language, email_id, emailNotes, ccMailId = [])
+      begin
+        WkMailer.email_user(subject, language, email_id, emailNotes, ccMailId).deliver
+      rescue Exception => e
+        errMsg = (e.message).to_s
+      end
+      errMsg
+    end
+
+    def getResponseGroup(survey_id=params[:survey_id])
+        closedResponses = WkSurveyResponse.getClosedResp(survey_id)
+        groupedNames = closedResponses.pluck(:group_name).compact
+    end
+  
 end

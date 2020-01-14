@@ -64,7 +64,7 @@ module Redmine::MenuManager::MenuHelper
     if project && !project.new_record?
       :project_menu
     else
-	  controllerArr = ["wktime", "wkexpense", "wkattendance", "wkreport", "wkpayroll",  "wkinvoice", "wkcrmaccount", "wkcontract", "wkaccountproject", "wktax", "wkgltransaction", "wkledger", "wklead", "wkopportunity", "wkcrmactivity", "wkcrmcontact", "wkcrmenumeration", "wkpayment", "wkexchangerate","wkpurchase","wkrfq","wkquote","wkpurchaseorder","wksupplierinvoice","wksupplierpayment","wksupplieraccount","wksuppliercontact", "wklocation", "wkproduct", "wkbrand", "wkattributegroup" , "wkproductitem", "wkshipment", "wkunitofmeasurement", "wkasset", "wkassetdepreciation", "wkgrouppermission", "wkscheduling", "wkshift", "wkpublicholiday", "wkdashboard", "wksurvey"]
+	  controllerArr = ["wktime", "wkexpense", "wkattendance", "wkreport", "wkpayroll",  "wkinvoice", "wkcrmaccount", "wkcontract", "wkaccountproject", "wktax", "wkgltransaction", "wkledger", "wklead", "wkopportunity", "wkcrmactivity", "wkcrmcontact", "wkcrmenumeration", "wkpayment", "wkexchangerate","wkpurchase","wkrfq","wkquote","wkpurchaseorder","wksupplierinvoice","wksupplierpayment","wksupplieraccount","wksuppliercontact", "wklocation", "wkproduct", "wkbrand", "wkattributegroup" , "wkproductitem", "wkshipment", "wkunitofmeasurement", "wkasset", "wkassetdepreciation", "wkgrouppermission", "wkscheduling", "wkshift", "wkpublicholiday", "wkdashboard", "wksurvey", "wkleaverequest", "wkdocument"]
 	  externalMenus = call_hook :external_erpmine_menus
 	   externalMenus = externalMenus.split(' ')
 	  unless externalMenus.blank?
@@ -592,7 +592,10 @@ Rails.configuration.to_prepare do
 	#end
 	User.send(:include, FttePatch::UserAllowedToPatch)
 	ApplicationController.send(:include, FttePatch::ApplicationControllerPatch)
-	TimeEntryQuery.send(:include, FttePatch::TimeEntryQueryPatch)
+	if ActiveRecord::Base.connection.table_exists?("#{User.table_name}") &&
+		ActiveRecord::Base.connection.column_exists?("#{User.table_name}", :parent_id)
+		TimeEntryQuery.send(:include, FttePatch::TimeEntryQueryPatch)
+	end
 
 end
 
@@ -600,7 +603,7 @@ Redmine::Plugin.register :redmine_wktime do
   name 'ERPmine'
   author 'Adhi Software Pvt Ltd'
   description 'ERPmine is an ERP for Service Industries. It has the following modules: Time & Expense, Attendance, Payroll, CRM, Billing, Accounting, Purchasing, Inventory, Asset , Reports, Dashboards and Survey'
-  version '3.7.1'
+  version '3.9.1'
   url 'http://www.redmine.org/plugins/wk-time'
   author_url 'http://www.adhisoftware.co.in/'
   
