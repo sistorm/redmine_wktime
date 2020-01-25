@@ -1,3 +1,4 @@
+
 function getTextBoxField(name, inputEl, splitVal){
     value = $.trim($(inputEl).text());
     var input = '<input id="txt_'+ name +'_'+splitVal[1]+'_'+splitVal[2]+'" name="'+ name +'_'+splitVal[1]+'_'+splitVal[2]+'"';
@@ -37,13 +38,13 @@ function validateHrFormat(inputEl){
 }
 
 function bulkEdit(){
-    var button = $('#editIcon').prop('title');
+    var button = $('#editIcon').attr('action');
     if(button == 'Edit'){
         $('[id^="clockin_"]').each(function(){
             splitVal = this.id.split("_");
             clockInEl = $('#clockin_'+splitVal[1]+'_'+splitVal[2]);
             clockOutEl = $('#clockout_'+splitVal[1]+'_'+splitVal[2]);
-            $('#editIcon').prop('title', 'Update').removeClass().addClass("icon icon-save");
+            $('#editIcon').attr('action', 'Update').removeClass().addClass("icon icon-save");
             $(this).parent('tr').removeClass("user locked");
             $(clockInEl).html(getTextBoxField('clockin', clockInEl, splitVal));
             $(clockOutEl).html(getTextBoxField('clockout', clockOutEl, splitVal));
@@ -69,7 +70,7 @@ function bulkEdit(){
             },
             complete: function(){
                 $(this).parent().removeClass('ajax-loading');
-                $('#editIcon').prop('title', 'Edit').removeClass().addClass("icon icon-edit");
+                $('#editIcon').attr('action', 'Edit').removeClass().addClass("icon icon-edit");
             }
         });
     }

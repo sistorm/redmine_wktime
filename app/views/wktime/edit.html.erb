@@ -1,5 +1,7 @@
  <%= stylesheet_link_tag 'wk-time', :plugin => "redmine_wktime" %>
   <%= javascript_include_tag 'edit', :plugin => "redmine_wktime" %>
+ <%= javascript_include_tag 'script.js', plugin: 'redmine_time_entry_timepicker' %>
+ <%= stylesheet_link_tag 'style.css', plugin: 'redmine_time_entry_timepicker' %>
 	<script type="text/javascript"> 
 		lblPleaseSelect = '<%=l(:actionview_instancetag_blank_option) %>'
 		lblWarnUnsavedTE = '<%=l(:text_warn_on_leaving_unsaved) %>'
@@ -7,6 +9,7 @@
 		issueField = '<%= l(:field_issue) %>';
 		invalidMsg = " <%= (CGI.unescapeHTML l('activerecord.errors.messages.invalid')).html_safe %>";
 		submissionack="<%= Setting.plugin_redmine_wktime['wktime_submission_ack'] %>";
+		maxHourAlertMsg = "<%= l(:text_wk_warning_max_hour, :value => "#{controller.maxHour}").html_safe %>";
 		minHourAlertMsg = "<%= l(:text_wk_warning_min_hour, :value => "#{controller.minHour}").html_safe %>";
 		minHourperWeekAlertMsg = "<%= l(:text_wk_warning_min_hour_week, :value => "#{controller.minHourPerWeek}").html_safe %>";
 		maxHourperWeekAlertMsg = "<%= l(:text_wk_warning_max_hour_week, :value => "#{controller.maxHourPerWeek}").html_safe %>";
@@ -44,7 +47,7 @@
 		
 	</script>
 
-	<div id="comment-dlg" title="<%= l(:label_attribute_plural) %>">
+	<div id="comment-dlg">
 	<!-- modified class .ui-widget-header to change the header color -->
 		<span id="_edit_comm_proj_">project</span>, 
 		<span id="_edit_comm_iss_">issue</span>,
@@ -90,7 +93,7 @@
 
 	</div>
 
-	<div id="notes-dlg" title="<%= l(:button_wk_reject) %>">
+	<div id="notes-dlg">
 
 		<fieldset>
 			<p> <label><%= l(:label_wk_reject_reason) %></label>
@@ -157,6 +160,53 @@
 <td width="100%"></td>
 </td></table>
 </div>
+	 <script>
+		 function initListenerTime() {
+			 $('.times_hours_input').off()
+			 $('.times_minutes_input').off()
+			 $('.times_hours_input').on('change keyup', function(){
+				 hour_input= $(this).parents('.hours').eq(0).find('input[id^=hours]').eq(0);
+				 times_minutes_input = $(this).parents('.hours').eq(0).find('.times_minutes_input').eq(0);
+				 value = parseInt($(this).val()) + ':' + parseInt(times_minutes_input.val())
+				 if(value === '0:0')
+					 hour_input.val('')
+				 else
+					 hour_input.val(value)
+
+				 hour_input.trigger('change')
+			 })
+			 $('.times_minutes_input').on('change keyup', function(){
+				 hour_input= $(this).parents('.hours').eq(0).find('input[id^=hours]').eq(0);
+				 times_hours_input = $(this).parents('.hours').eq(0).find('.times_hours_input').eq(0);
+				 value = parseInt($(this).val())
+				 if( value >= 60)
+				 {
+					 $(this).val(value%60);
+					 value = parseInt(times_hours_input.val()) + parseInt(value / 60)
+					 if(value === '0:0')
+						 times_hours_input.val('')
+					 else
+						 times_hours_input.val(value)
+
+					 times_hours_input.trigger('change')
+				 }
+				 else
+				 {
+					 value = parseInt(times_hours_input.val()) + ':' + parseInt($(this).val())
+					 if(value === '0:0')
+						 hour_input.val('')
+					 else
+						 hour_input.val(value)
+
+					 hour_input.trigger('change')
+				 }
+
+			 })
+		 }
+		 $(function(){
+			 initListenerTime()
+		 })
+	 </script>
 
 <%= render :partial => 'edit_issues', :locals => { :entries => @prev_template ? @prev_entries : @entries }%>
 

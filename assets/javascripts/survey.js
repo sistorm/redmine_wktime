@@ -51,7 +51,6 @@ $(function()
 					alert('Validation failed');
 					return false;
 				}
-				$("#reminder-email-dlg").dialog("close");
 				var url = '/wksurvey/email_user';
 				$.ajax({
 					url: url,
@@ -59,9 +58,8 @@ $(function()
 					data: { user_group: user_group, survey_id: survey_id, email_notes: email_notes, additional_emails: additional_emails,
 							includeUserGroup: includeUserGroup},
 					success: function(data){
-						if(data != "ok") {
-							alert(data);
-						}
+						if(data != "ok") alert(data);
+						$("#reminder-email-dlg").dialog("close");
 					},
 					error: function(xhr,status,error) {
 						$('#email_notes').val('');
@@ -100,6 +98,28 @@ $(function()
 		}
 	});
 	$('#review').trigger("change");
+
+	$("#add-grp-name").dialog({
+		autoOpen: false,
+		resizable: false,
+		modal: true,
+		buttons: [
+		{
+			 text: 'Ok',
+			 id: 'btnOk',
+			 click: function(){
+			$("#closedResp_form").submit();
+			 }
+		},
+		{
+			text: 'Cancel',
+			id: 'btnCancel',
+			click: function() {
+				$( this ).dialog( "close" );
+			}
+		}]
+
+	});
 });
 
 function addrows(qINDEX, qID)
@@ -290,6 +310,9 @@ function showConfirmationDlg(){
 	$( "#reminder-email-dlg" ).dialog( "open" );
 }
 
+function addGrpName(){
+	$( "#add-grp-name" ).dialog( "open" );
+}
 function validateEmail($email) {
   var emailReg = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,4})?$/;
   return emailReg.test( $email );
