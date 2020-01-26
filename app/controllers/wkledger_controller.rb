@@ -67,8 +67,15 @@ class WkledgerController < WkaccountingController
 			errorMsg = wkledger.errors.full_messages.join("<br>")
 		end
 		if errorMsg.nil?
-		    redirect_to :controller => 'wkledger',:action => 'index' , :tab => 'wkledger'
+		    
 		    flash[:notice] = l(:notice_successful_update)
+			
+		    if params[:wktime_save_continue]
+			    redirect_to :controller => 'wkledger', :action => 'edit' ,  :ledger_id => (params[:ledger_id].to_i + 1) , :tab => 'wkledger' 
+		    else                                                                                                
+			      redirect_to :controller => 'wkledger',:action => 'index', :tab => 'wkledger' 
+		    end 
+				
 		else
 			flash[:error] = errorMsg 
 		    redirect_to :controller => 'wkledger',:action => 'edit'
